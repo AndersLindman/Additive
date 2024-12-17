@@ -1,0 +1,198 @@
+desc: Simple additive FM synth
+ 
+in_pin:left
+in_pin:right
+out_pin:left
+out_pin:right
+
+slider100:volume=0.5<0,1,0.01>Volume
+slider110:attack=0.01<0,1,0.01:log=0.4>Attack
+slider111:decay=0.2<0,1,0.01:log=0.7>Decay
+slider112:sustain=0.5<0,1,0.01>Sustain
+slider113:release=0.01<0,1,0.01:log=0.3>Release
+
+slider120:carrier_harmonic1=2.5<0,5,0.01>Fundamental
+slider121:carrier_harmonic2=0<0,5,0.01>Harmonic 2
+slider122:carrier_harmonic3=0<0,5,0.01>Harmonic 3
+slider123:carrier_harmonic4=0<0,5,0.01>Harmonic 4
+
+slider130:fm_envelope=0<0,1,0.01>FM env
+
+slider140:sub_harmonic=0<0,5,0.01:log=1>FM Sub
+slider141:harmonic1=0<0,5,0.01:log=1>FM harmonic 1
+slider142:harmonic2=0<0,5,0.01:log=1>FM harmonic 2
+slider143:harmonic3=0<0,5,0.01:log=1>FM harmonic 3
+
+slider150:pitch_bend_range=2<0,12,1>Pitch Bend Range (Semitones)
+
+@init
+num_voices = 8;
+voice_size = 8; // Increased for ADSR state
+voices_start = 0;
+voices_end = num_voices * voice_size - 1;
+mem[voices_end] = 0; // Allocate memory
+
+osc_phase_offset = 0;
+freq_offset = 1;
+gain_offset = 2;
+note_on_offset = 3;
+adsr_state_offset = 4; // 0: off, 1: attack, 2: decay, 3: sustain, 4: release
+mod_phase_offset = 5;
+velocity_offset = 6;
+note_offset = 7;
+
+sample_rate = srate;
+global_pitch_bend_factor = 1; // Initialize global pitch bend factor
+
+@slider
+
+@block
+// Handle MIDI input
+while (midirecv(offset, msg1, msg2, msg3)) (
+    status = msg1 & 0xF0;
+    note = msg2;
+    velocity = msg3 / 127.0;
+    data1 = msg2;
+    data2 = msg3;
+       
+    // Pitch Bend (Global)
+    status == 0xE0 ? (
+      pitch_bend = data1 + (data2 << 7);
+      pitch_bend_range = max(0.001, pitch_bend_range); // Minimum value of 0.001
+      global_pitch_bend_factor = pow(2, (pitch_bend - 8192) / 8192.0 * pitch_bend_range / 12);
+    );
+    
+    // Note On
+    status == 0x90 && velocity > 0  ? (
+        // Find a truly free voice (gain close to zero)
+        note_to_on = msg2;
+        voice_found = 0;
+        i = 0;
+        
+        loop(num_voices, 
+            voice_index = voices_start + i * voice_size;
+            !mem[voices_start + i * voice_size + note_on_offset] && mem[voice_index + gain_offset] < 0.001 && !voice_found ? ( //Check if gain is nearly zero
+                mem[voice_index + note_on_offset] = 1;
+                mem[voice_index + freq_offset] = 440 * pow(2, (note - 69) / 12);
+                mem[voice_index + osc_phase_offset] = 0;
+                mem[voice_index + mod_phase_offset] = 0;
+                mem[voice_index + gain_offset] = 0;
+                mem[voice_index + adsr_state_offset] = 1; // Attack state
+                mem[voice_index + velocity_offset] = velocity;
+                mem[voice_index + note_offset] = note_to_on;
+                voice_found = 1;
+            );
+            i += 1;
+        );
+    );
+    
+    // Note Off
+    status == 0x80 || status == 0x90 && velocity == 0? ( // Explicit Note Off
+        note_to_off = msg2;
+        i = 0;
+        loop(num_voices,
+            voice_index = voices_start + i * voice_size;
+            (mem[voice_index + note_on_offset] && mem[voice_index + note_offset] == note_to_off) ? ( // Check original note AND note_on_offset
+                mem[voice_index + note_on_offset] = 0;
+                mem[voice_index + adsr_state_offset] = 4;
+            ) : 0;
+            i += 1;
+        );
+    );
+);
+
+@sample
+spl0 = 0;
+spl1 = 0;
+
+i = 0;
+loop(num_voices,
+    voice_index = voices_start + i * voice_size;
+    mem[voice_index + note_on_offset] || mem[voice_index + adsr_state_offset] == 4 ? ( // Process if note on or releasing
+        freq = mem[voice_index + freq_offset] * global_pitch_bend_factor;
+        mem[voice_index + osc_phase_offset] += freq / sample_rate;
+        mem[voice_index + osc_phase_offset] > 1 ? mem[voice_index + osc_phase_offset] -= 1;
+
+        // ADSR 
+        adsr_gain = mem[voice_index + gain_offset];
+        adsr_state = mem[voice_index + adsr_state_offset];
+
+        adsr_state == 1 ? ( // Attack
+            adsr_gain += (1 / (attack * sample_rate));
+            adsr_gain >= 1 ? (adsr_gain = 1; adsr_state = 2);
+        );
+        adsr_state == 2 ? ( // Decay
+            adsr_gain -= ((1 - sustain) / (decay * sample_rate));
+            adsr_gain <= sustain ? (adsr_gain = sustain; adsr_state = 3);
+        ); 
+        adsr_state == 4 ? ( // Release
+            adsr_gain -= (sustain / (release * sample_rate));
+            adsr_gain <= 0 ? (
+              adsr_gain = 0;
+              adsr_state = 0; //Voice is now off
+        //      mem[voice_index + note_on_offset] = 0;
+            );
+        );
+
+        mem[voices_start + i * voice_size + gain_offset] = adsr_gain;
+        mem[voices_start + i * voice_size + adsr_state_offset] = adsr_state;
+
+        // FM Synthesis
+        mod_freq = freq * 0.5; // Modulator frequency also pitch bent
+
+        mem[voice_index + mod_phase_offset] += mod_freq / sample_rate;
+        mem[voice_index + mod_phase_offset] > 1 ? mem[voice_index + mod_phase_offset] -= 1;
+
+        // Additive Modulator
+        mod_gain = 1 + (adsr_gain - 1) * fm_envelope;
+       
+        modulator = 0;
+        harmonic1_amp = sub_harmonic * mod_gain;
+        harmonic2_amp = harmonic1 * mod_gain;
+        harmonic3_amp = harmonic2 * mod_gain;
+        harmonic4_amp = harmonic3 * mod_gain;
+       
+        mod_phase = mem[voice_index + mod_phase_offset] * 2 * $PI;
+        modulator += sin(mod_phase) * harmonic1_amp;
+        modulator += sin(mod_phase * 2) * harmonic2_amp; // 1x frequency
+        modulator += sin(mod_phase * 4) * harmonic3_amp; // 2x frequency
+        modulator += sin(mod_phase * 6) * harmonic4_amp; // 3x frequency
+
+        // Additive Carrier
+        carrier = 0;
+        carrier_harmonic1_amp = carrier_harmonic1;
+        carrier_harmonic2_amp = carrier_harmonic2;
+        carrier_harmonic3_amp = carrier_harmonic3;
+        carrier_harmonic4_amp = carrier_harmonic4;
+  
+        carrier_phase = mem[voice_index + osc_phase_offset] * 2 * $PI;
+        carrier += sin(carrier_phase) * carrier_harmonic1_amp;
+        carrier += sin(carrier_phase * 2) * carrier_harmonic2_amp;
+        carrier += sin(carrier_phase * 3) * carrier_harmonic3_amp;
+        carrier += sin(carrier_phase * 4) * carrier_harmonic4_amp;
+       
+        base_phase = mem[voices_start + i * voice_size + osc_phase_offset];
+        fm_phase = base_phase + modulator;
+        fm_phase > 1 ? fm_phase -= 1;
+        fm_phase *= 2 * $PI;
+
+        fm_sample = 0;
+        fm_sample += sin(fm_phase) * carrier_harmonic1_amp;
+        fm_sample += sin(fm_phase * 2) * carrier_harmonic2_amp;
+        fm_sample += sin(fm_phase * 3) * carrier_harmonic3_amp;
+        fm_sample += sin(fm_phase * 4) * carrier_harmonic4_amp;
+      
+        velocity_gain = mem[voice_index + velocity_offset];
+
+        sample = fm_sample * adsr_gain * velocity_gain;
+        
+        spl0 += sample;
+        spl1 += sample;
+    );
+    i += 1;
+);
+
+vol = volume * 0.1;
+
+spl0 *= vol;
+spl1 *= vol;
