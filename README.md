@@ -1,6 +1,6 @@
 # Simple Additive FM Synth (JSFX Plugin for Reaper)
 
-This is a simple additive FM synthesizer designed for Reaper, implemented as a JSFX plugin. It provides versatile additive synthesis capabilities, with support for basic FM modulation and envelope shaping. This plugin is suitable for creating rich, harmonically complex sounds and experimenting with FM synthesis techniques.
+This is a simple polyphonic (8 voices) additive FM synthesizer designed for Reaper, implemented as a JSFX plugin. It provides versatile additive synthesis capabilities, with support for basic FM modulation and envelope shaping. This plugin is suitable for creating rich, harmonically complex sounds and experimenting with FM synthesis techniques.
 
 ![Alt text for your screenshot](images/AdditiveFMSynth.png)
 
