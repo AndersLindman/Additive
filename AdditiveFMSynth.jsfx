@@ -157,19 +157,6 @@ loop(num_voices,
         modulator += sin(mod_phase * 2) * harmonic2_amp; // 1x frequency
         modulator += sin(mod_phase * 4) * harmonic3_amp; // 2x frequency
         modulator += sin(mod_phase * 6) * harmonic4_amp; // 3x frequency
-
-        // Additive Carrier
-        carrier = 0;
-        carrier_harmonic1_amp = carrier_harmonic1;
-        carrier_harmonic2_amp = carrier_harmonic2;
-        carrier_harmonic3_amp = carrier_harmonic3;
-        carrier_harmonic4_amp = carrier_harmonic4;
-  
-        carrier_phase = mem[voice_index + osc_phase_offset] * 2 * $PI;
-        carrier += sin(carrier_phase) * carrier_harmonic1_amp;
-        carrier += sin(carrier_phase * 2) * carrier_harmonic2_amp;
-        carrier += sin(carrier_phase * 3) * carrier_harmonic3_amp;
-        carrier += sin(carrier_phase * 4) * carrier_harmonic4_amp;
        
         base_phase = mem[voices_start + i * voice_size + osc_phase_offset];
         fm_phase = base_phase + modulator;
