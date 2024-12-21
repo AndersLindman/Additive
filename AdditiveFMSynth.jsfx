@@ -153,21 +153,21 @@ loop(num_voices,
         harmonic4_amp = harmonic3 * mod_gain;
        
         mod_phase = mem[voice_index + mod_phase_offset] * 2 * $PI;
-        modulator += sin(mod_phase) * harmonic1_amp;
-        modulator += sin(mod_phase * 2) * harmonic2_amp; // 1x frequency
-        modulator += sin(mod_phase * 4) * harmonic3_amp; // 2x frequency
-        modulator += sin(mod_phase * 6) * harmonic4_amp; // 3x frequency
-       
+        modulator += sin(mod_phase) * harmonic1;
+        modulator += sin(mod_phase * 2) * harmonic2; // 1x frequency
+        modulator += sin(mod_phase * 4) * harmonic3; // 2x frequency
+        modulator += sin(mod_phase * 6) * harmonic4; // 3x frequency
+
         base_phase = mem[voices_start + i * voice_size + osc_phase_offset];
         fm_phase = base_phase + modulator;
         fm_phase > 1 ? fm_phase -= 1;
         fm_phase *= 2 * $PI;
 
         fm_sample = 0;
-        fm_sample += sin(fm_phase) * carrier_harmonic1_amp;
-        fm_sample += sin(fm_phase * 2) * carrier_harmonic2_amp;
-        fm_sample += sin(fm_phase * 3) * carrier_harmonic3_amp;
-        fm_sample += sin(fm_phase * 4) * carrier_harmonic4_amp;
+        fm_sample += sin(fm_phase) * carrier_harmonic1;
+        fm_sample += sin(fm_phase * 2) * carrier_harmonic2;
+        fm_sample += sin(fm_phase * 3) * carrier_harmonic3;
+        fm_sample += sin(fm_phase * 4) * carrier_harmonic4;
       
         velocity_gain = mem[voice_index + velocity_offset];
 
